@@ -72,13 +72,14 @@ router.post('/login', async (req, res) => {
     if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(400).json({ message: '닉네임 또는 패스워드를 확인해주세요.' });
     }
-
+ 
     // JWT 토큰 발행
-    const token = jwt.sign({ userId: user._id, nickname: user.nickname }, 'your_jwt_secret', { expiresIn: '1h' });
-    
-    console.log("Generated JWT Toekn:", token);
+    const jwtSecret = process.env.JWT_SECRET; // 환경 변수에서 JWT 비밀 키 가져오기
+    const token = jwt.sign({ user_id: user._id, nickname: user.nickname }, jwtSecret, { expiresIn: '1h' });
 
-    res.cookie('token', token, { httpOnly: true }); // JWT 토큰을 쿠키에 저장
+    console.log("Generated JWT Token:", token);
+
+    res.cookie('token', token, { httpOnly: true}); // JWT 토큰을 쿠키에 저장
     res.json({ message: '로그인 성공', nickname });
 });
 

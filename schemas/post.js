@@ -4,15 +4,15 @@ const postSchema = {
         type: String,
         required: true
     },
-    user: {
+    nickname: {
         type: String, // 사용자 닉네임 또는 ID를 나타내는 필드
         required: true
     },
-    content: {
+    user_id: {
         type: String,
         required: true
     },
-    password: {
+    content: {
         type: String,
         required: true
     },

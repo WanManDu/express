@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
+const authMiddleware = require('../middlewares/auth');
 
 //댓글 목록 조회 API
 router.get('/:post_id', async (req, res) => {
@@ -8,12 +9,15 @@ router.get('/:post_id', async (req, res) => {
     const { post_id } = req.params;
 
     try {
-        const comments = await db.collection('comments').find({ post_id }).toArray();
+        const comments = await db.collection('comments')
+            .find({ post_id: new ObjectId(post_id) }) // 게시글 ID로 댓글 필터링
+            .sort({ date: -1 }) // 작성 날짜 기준 내림차순 정렬
+            .toArray();
 
         if (comments.length === 0) {
             return res.status(404).json({ message: '댓글이 없습니다.' });
         }
-
+            
         console.log("Comments:", comments);
         res.json({ message: '댓글 조회 성공', comments });
     } catch (error) {
@@ -23,22 +27,24 @@ router.get('/:post_id', async (req, res) => {
 });
 
 // 댓글 작성 API
-router.post('/:post_id', async (req, res) => {
-    const { comment, user } = req.body; 
-    const { post_id } = req.params;     
-
+router.post('/:post_id', authMiddleware, async (req, res) => {
     const db = req.app.locals.db;
+    const { post_id } = req.params;
+    const { comment } = req.body;
+    const user_id = req.user.user_id;
+    const date = new Date();
 
     // 댓글 입력값 유효성 검사
     if (!comment) {
-        return res.status(400).json({ message: '댓글을 입력해주세요' });
-    }
-    
-    if (!user) {
-        return res.status(400).json({ message: '유효한 사용자명을 제공해주세요' });
+        return res.status(400).json({ message: '댓글 내용을 입력해주세요' });
     }
 
     try {
+        // 사용자 정보 가져오기
+        const user = await db.collection('users').findOne({ _id: user_id });
+        if (!user) {
+            return res.status(400).json({ message: '유효한 사용자 정보가 없습니다.' });
+        }
 
         const existingUser = await db.collection('users').findOne({ nickname: user });
         if (!existingUser) {
@@ -47,10 +53,11 @@ router.post('/:post_id', async (req, res) => {
         
         // 댓글 생성
         const newComment = {
-            comment,
             post_id: new ObjectId(post_id), // 게시글 ID
-            user,                           // 사용자명
-            date: new Date()                // 작성 시간
+            comment,
+            nickname: user.nickname,
+            user_id : user_id,                           // 사용자명
+            date                            // 작성 시간
         };
 
         const result = await db.collection('comments').insertOne(newComment);
@@ -65,23 +72,24 @@ router.post('/:post_id', async (req, res) => {
 });
 
 // 댓글 수정 API
-router.put('/commentupdate/:comment_id', async (req, res) => {
+router.put('/commentupdate/:comment_id', authMiddleware, async (req, res) => {
     const db = req.app.locals.db;
     const { comment_id } = req.params;
-    const { comment, user } = req.body;
+    const { comment } = req.body;
+    const user_id = req.user.user_id;
 
     if (!comment) {
-        return res.status(400).json({ message: '수정할 댓글을 입력해주세요' });
+        return res.status(400).json({ message: '댓글 내용을 입력해주세요.' });
     }
 
     try {
         const existingComment = await db.collection('comments').findOne({ _id: new ObjectId(comment_id) });
         
         if (!existingComment) {
-            return res.status(404).json({ message: '댓글이 존재하지 않습니다.' });
+            return res.status(404).json({ message: '댓글을 찾을 수 없습니다.' });
         }
 
-        if (existingComment.user.toString() !== user) {
+        if (existingComment.user.toString() !== user_id) {
             return res.status(403).json({ message: '댓글 수정 권한이 없습니다.' });
         }
 
@@ -98,15 +106,10 @@ router.put('/commentupdate/:comment_id', async (req, res) => {
     }
 });
 // 댓글 삭제 API
-router.delete('/:comment_id', async (req, res) => {
+router.delete('/:comment_id', authMiddleware, async (req, res) => {
     const db = req.app.locals.db;
     const { comment_id } = req.params;
-    const { nickname } = req.body; // 삭제 요청 시 사용자 nickname
-
-    // 입력값 유효성 검사
-    if (!nickname) {
-        return res.status(400).json({ message: '유효한 사용자 닉네임을 제공해주세요' });
-    }
+    const user_id = req.user.user_id;
 
     try {
         // 댓글 찾기
@@ -117,7 +120,7 @@ router.delete('/:comment_id', async (req, res) => {
         }
 
         // 삭제 권한 확인
-        if (existingComment.user !== nickname) { // 댓글 작성자와 비교
+        if (existingComment.user_id !== user_id) { // 댓글 작성자와 비교
             return res.status(403).json({ message: '댓글 삭제 권한이 없습니다.' });
         }
 

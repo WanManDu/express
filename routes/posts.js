@@ -1,18 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
+const authMiddleware = require('../middlewares/auth');
 
 
-router.get('/mainpage/:id', async (req, res) => {
+router.get('/', async (req, res) => {
     const db = req.app.locals.db;
-    
+
     try {
-        // 필요한 필드만 가져오고, 날짜 기준으로 내림차순 정렬 및 페이지네이션
-        let result = await db.collection('post')
-            .find({}, { projection: { title: 1, author: 1, date: 1 } }) // 제목, 작성자, 작성 날짜만 선택
+        // 필요한 필드만 가져오고, 날짜 기준으로 내림차순 정렬
+        const result = await db.collection('posters') 
+            .find({}, { projection: { title: 1, nickname: 1, date: 1 } }) // 제목, 작성자, 작성 날짜만 선택
             .sort({ date: -1 }) // 작성 날짜 기준 내림차순 정렬
-            .skip((req.params.id - 1) * 10) // 게시글 10개씩 페이지 구분
-            .limit(10)
             .toArray();
 
         console.log(result); // 데이터를 콘솔에 출력하여 확인
@@ -24,30 +23,33 @@ router.get('/mainpage/:id', async (req, res) => {
 });
 
 
+
 //게시글 조회 API
 router.get('/:post_id', async (req, res) => {
     const db = req.app.locals.db;
     const { post_id } = req.params;
 
     try {
-        const poster = await db.collection('posters').findOne({ _id: new ObjectId(post_id) });
-        
-        if (!poster) {
+        // 게시글 조회
+        const post = await db.collection('posters').findOne({ _id: new ObjectId(post_id) });
+
+        if (!post) {
             return res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
         }
 
-        console.log("Poster:", poster);
-        res.json({ message: '게시글 조회 성공', poster });
+        res.json({ message: '게시글 조회 성공', post });
     } catch (error) {
-        console.error("Error fetching poster:", error);
+        console.error("Error fetching post:", error);
         res.status(500).json({ message: '게시글을 불러오는 데 문제가 발생했습니다.' });
     }
 });
 
-//게시글 작성 API
-router.post('/', async (req, res) => {
+// 게시글 작성 API
+router.post('/', authMiddleware, async (req, res) => {
     const date = new Date();
-    const { title, user, content, password } = req.body;
+    const { title, content } = req.body;
+    const user_id = req.user.user_id; // JWT에서 가져온 user_id
+    const nickname = req.user.nickname;
     const db = req.app.locals.db; 
 
     // 입력 필드 유효성 검사
@@ -55,33 +57,39 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ message: '제목을 입력해주세요' });
     }
 
-    if (!user) {
-        return res.status(400).json({ message: '사용자명을 입력해주세요' });
-    }
-
     if (!content) {
         return res.status(400).json({ message: '내용을 입력해주세요' });
     }
 
-    if (!password) {
-        return res.status(400).json({ message: '비밀번호를 입력해주세요' });
+    try {
+
+        // MongoDB에 데이터 삽입
+        const result = await db.collection('posters').insertOne({ 
+            title, 
+            nickname: nickname, // 사용자 닉네임 사용
+            user_id: user_id,
+            content, 
+            date 
+        });
+
+        console.log("Poster was saved to MongoDB:", result);
+
+        // 성공 응답
+        res.status(201).json({ message: '게시글 작성 완료' });
+    } catch (error) {
+        console.error("Error saving poster to MongoDB:", error);
+        res.status(500).json({ message: '게시글 작성 중 오류가 발생했습니다.' });
     }
-
-    // MongoDB에 데이터 삽입
-    const result = await db.collection('posters').insertOne({ title, user, content, date, password });
-
-    console.log("Poster was saved to MongoDB:", result);
-
-    // 성공 응답
-    res.status(201).json({ message: '게시글 작성 완료' });
 });
 
 
+
 //게시글 수정 API
-router.put('/postupdate/:post_id', async (req, res) => {
+router.put('/postupdate/:post_id', authMiddleware, async (req, res) => {
     const db = req.app.locals.db;
     const { post_id } = req.params;
-    const { title, content, passwordConfirm } = req.body;
+    const { title, content } = req.body;
+    const user_id = req.user.user_id;
 
     // 입력 필드 유효성 검사
     if (!title) {
@@ -90,20 +98,18 @@ router.put('/postupdate/:post_id', async (req, res) => {
     if (!content) {
         return res.status(400).json({ message: '내용을 입력해주세요' });
     }
-    if (!passwordConfirm) {
-        return res.status(400).json({ message: '비밀번호를 입력해주세요' });
-    }
 
     try {
         // 게시글을 찾아 기존 비밀번호와 일치하는지 확인
         const existingPost = await db.collection('posters').findOne({ _id: new ObjectId(post_id) });
-        
-        if (existingPost.password !== passwordConfirm) {
-            return res.status(400).json({ message: '비밀번호가 일치하지 않습니다.' });
-        }
 
         if (!existingPost) {
             return res.status(400).json({ message: '게시글이 없습니다.' });
+        }
+
+        // 게시글 작성자 확인
+        if (existingPost.user_id.toString() !== user_id) {
+            return res.status(403).json({ message: '본인이 작성한 게시글만 수정할 수 있습니다.' });
         }
 
         // 비밀번호 확인 후, 제목과 내용 업데이트
@@ -121,32 +127,38 @@ router.put('/postupdate/:post_id', async (req, res) => {
 });
 
 
-
 //게시글 삭제 API
-router.delete('/:post_id', async (req, res) => {
+router.delete('/:post_id', authMiddleware, async (req, res) => {
     const db = req.app.locals.db;
     const { post_id } = req.params;
-    const { password } = req.body;
+    const user_id = req.user.user_id;
 
     try {
-        const result = await db.collection('posters').deleteOne({ _id: new ObjectId(post_id), password });
+        // 게시글 존재 여부 확인
+        const existingPost = await db.collection('posters').findOne({ _id: new ObjectId(post_id) });
 
-        if (result.deletedCount === 0) {
-            return res.status(400).json({ message: '게시글이 없거나 비밀번호가 일치하지 않습니다.' });
+        if (!existingPost) {
+            return res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
         }
+
+        // 게시글 작성자 확인
+        if (existingPost.user_id.toString() !== user_id) {
+            return res.status(403).json({ message: '본인이 작성한 게시글만 삭제할 수 있습니다.' });
+        }
+
+        // 게시글 삭제
+        const result = await db.collection('posters').deleteOne({ _id: new ObjectId(post_id) });
 
         // 관련 댓글 삭제
         await db.collection('comments').deleteMany({ post_id: new ObjectId(post_id) });
 
-        console.log("Poster was deleted from MongoDB:", result);
+        console.log("Post was deleted from MongoDB:", result);
         res.status(200).json({ message: '게시글 삭제 완료' });
     } catch (error) {
-        console.error("Error deleting poster:", error);
+        console.error("Error deleting post:", error);
         res.status(500).json({ message: '게시글 삭제에 실패했습니다.' });
     }
 });
-
-
 
 
 module.exports = router;
