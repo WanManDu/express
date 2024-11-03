@@ -32,6 +32,7 @@ router.post('/:post_id', authMiddleware, async (req, res) => {
     const { post_id } = req.params;
     const { comment } = req.body;
     const user_id = req.user.user_id;
+    const nickname = req.user.nickname;
     const date = new Date();
 
     // 댓글 입력값 유효성 검사
@@ -40,22 +41,12 @@ router.post('/:post_id', authMiddleware, async (req, res) => {
     }
 
     try {
-        // 사용자 정보 가져오기
-        const user = await db.collection('users').findOne({ _id: user_id });
-        if (!user) {
-            return res.status(400).json({ message: '유효한 사용자 정보가 없습니다.' });
-        }
-
-        const existingUser = await db.collection('users').findOne({ nickname: user });
-        if (!existingUser) {
-            return res.status(400).json({ message: '존재하지 않는 사용자입니다.' });
-        }
         
         // 댓글 생성
         const newComment = {
             post_id: new ObjectId(post_id), // 게시글 ID
             comment,
-            nickname: user.nickname,
+            nickname: nickname,
             user_id : user_id,                           // 사용자명
             date                            // 작성 시간
         };
@@ -89,7 +80,7 @@ router.put('/commentupdate/:comment_id', authMiddleware, async (req, res) => {
             return res.status(404).json({ message: '댓글을 찾을 수 없습니다.' });
         }
 
-        if (existingComment.user.toString() !== user_id) {
+        if (existingComment.user_id.toString() !== user_id) {
             return res.status(403).json({ message: '댓글 수정 권한이 없습니다.' });
         }
 
