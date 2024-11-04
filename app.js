@@ -27,6 +27,10 @@ app.use(cookieParser());
 // 라우트 설정
 app.use('/api', routes);
 
+app.get('/', (req, res) => {
+    res.send('Server is running');
+});
+
 // 서버 실행
 app.listen(8080, () => {
     console.log('Server running on http://localhost:8080');
