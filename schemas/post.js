@@ -1,25 +1,33 @@
 // schemas/post.js
-const postSchema = {
-    title: {
-        type: String,
-        required: true
-    },
-    nickname: {
-        type: String, // 사용자 닉네임 또는 ID를 나타내는 필드
-        required: true
-    },
-    user_id: {
-        type: String,
-        required: true
-    },
-    content: {
-        type: String,
-        required: true
-    },
-    date: {
-        type: Date,
-        default: Date.now // 게시글 작성 날짜
-    }
-};
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('./index'); // sequelize 인스턴스 가져오기
 
-module.exports = postSchema;
+module.exports = (sequelize, DataTypes) => {
+    const Post = sequelize.define('Post', {
+        title: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        nickname: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        user_id: {  // 작성자 ID
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            references: {
+                model: 'Users',  // User 모델을 참조
+                key: 'id'
+            }
+        },
+        content: {
+            type: DataTypes.TEXT,
+            allowNull: false,
+        },
+        date: {
+            type: DataTypes.DATE,
+            defaultValue: DataTypes.NOW,
+        },
+    });
+    return Post;
+};

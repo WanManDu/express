@@ -1,14 +1,25 @@
 const express = require('express');
-const { MongoClient } = require('mongodb');
 const routes = require('./routes');
+const { sequelize } = require('./schemas');
 require('dotenv').config();     //환경변수 로드
 
 const app = express();
 app.use(express.json()); // JSON 데이터 파싱
 
-// MongoDB Atlas 연결 설정
-const uri = process.env.MONGO_URL; // 환경 변수에서 MongoDB URL 가져오기
-const client = new MongoClient(uri);
+// 데이터베이스 연결 테스트
+sequelize.authenticate()
+    .then(() => console.log('MySQL 연결 성공'))
+    .catch(err => console.error('MySQL 연결 실패:', err));
+
+
+// 모델을 데이터베이스와 동기화
+sequelize.sync({ alter: true });
+
+const cors = require('cors');
+app.use(cors({
+    origin: 'http://15.164.175.168',
+    credentials: true
+}));
 
 const cookieParser = require('cookie-parser');
 app.use(cookieParser());
@@ -21,19 +32,3 @@ app.listen(8080, () => {
     console.log('Server running on http://localhost:8080');
 });
 
-async function main() {
-    try {
-        await client.connect();
-        console.log("Connected to MongoDB Atlas!");
-
-        // MongoDB 데이터베이스 객체 설정
-        app.locals.db = client.db("junglepress");
-
-
-
-    } catch (error) {
-        console.error("MongoDB connection error:", error);
-    }
-}
-
-main();

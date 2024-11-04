@@ -15,7 +15,10 @@ function authMiddleware(req, res, next) {
         const decoded = jwt.verify(token, jwtSecret); // 토큰 검증
         console.log(decoded);
 
-        req.user = decoded; // 요청 객체에 사용자 정보 추가
+        req.user = {
+            user_id: decoded.user_id,  // user_id가 포함되어 있어야 합니다
+            nickname: decoded.nickname
+        };
         next(); // 다음 미들웨어 또는 라우트로 이동
     } catch (error) {
         return res.status(401).json({ message: '유효하지 않은 토큰입니다.' });
